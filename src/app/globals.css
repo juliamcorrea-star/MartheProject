@@ -459,4 +459,203 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .epilogue-replay { min-height: 37px; }
   .epilogue-footer { right: 20px; bottom: 15px; left: 20px; font-size: 7px; }
 }
+
+.game-screen { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; padding-bottom: clamp(16px, 2vh, 28px); }
+.game-topbar { height: auto; min-height: 72px; padding-inline: clamp(8px, 1vw, 16px); }
+.resource-strip { height: auto; min-height: 76px; padding-inline: clamp(8px, 1.3vw, 20px); }
+.game-layout { flex: 1 0 auto; height: auto; min-height: max(540px, calc(100dvh - 180px)); grid-template-columns: minmax(0, 7fr) minmax(340px, 5fr); }
+.base-view { min-height: 540px; }
+.mission-panel { padding: clamp(28px, 3vh, 40px) clamp(24px, 2.8vw, 42px) 26px; }
+.panel-heading { gap: 18px; }
+.panel-heading h2 { line-height: 1.3; }
+.progress-block { margin-top: 30px; }
+.module-list { margin-top: 16px; }
+.module-row { min-height: 76px; gap: 12px; }
+.module-index { padding-top: 22px; }
+.module-copy p, .daily-brief p { line-height: 1.6; }
+.daily-brief { gap: 14px; padding: 17px 16px; }
+.panel-footer { margin-top: 20px; }
+.module-row, .map-selection, .module-action, .map-selection-action, .map-zoom button,
+.final-mission-button, .icon-button, .profile-chip, .panel-footer button {
+  transition: border-color .25s ease-out, background-color .25s ease-out, color .25s ease-out, transform .25s ease-out, box-shadow .25s ease-out;
+}
+.module-row:hover { background: rgba(205, 133, 63, .045); }
+.module-action:hover:not(:disabled), .map-selection-action:hover:not(:disabled),
+.map-zoom button:hover:not(:disabled), .final-mission-button:hover, .profile-chip:hover {
+  transform: translateY(-2px);
+}
+.map-module .module-visual { transition: background .3s ease-out, transform .3s ease-out, box-shadow .3s ease-out, border-color .3s ease-out; }
+.map-selection { padding: 12px 14px; }
+
+@media (min-width: 1600px) {
+  .game-layout { max-height: none; }
+}
+
+@media (max-width: 950px) and (min-width: 701px) {
+  .game-layout { min-height: max(520px, calc(100dvh - 180px)); grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); }
+  .mission-panel { padding: 28px 24px 22px; }
+  .module-row { gap: 9px; }
+}
+
+@media (max-width: 700px) {
+  .game-screen { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .game-topbar { min-height: 64px; }
+  .resource-strip { min-height: 72px; }
+  .game-layout { flex: 0 0 auto; height: auto; min-height: 0; }
+  .base-view { height: auto; min-height: clamp(400px, 58dvh, 580px); max-height: none; }
+  .mission-panel { min-height: 0; padding: 30px clamp(20px, 6vw, 32px) 25px; }
+  .panel-heading h2 { line-height: 1.3; }
+  .progress-block { margin-top: 24px; }
+  .module-row { min-height: 72px; }
+  .daily-brief { margin-top: 24px; }
+}
+
+.opening-screen {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: clamp(20px, 4vh, 36px);
+}
+.opening-nav { flex: 0 0 auto; }
+.opening-copy, .access-panel {
+  width: min(600px, calc(100% - 12.2% - 32px));
+  margin-left: 12.2%;
+  padding-top: clamp(38px, 7vh, 84px);
+}
+.opening-copy { max-width: 600px; }
+.access-panel { max-width: 600px; }
+.access-panel h1 { line-height: 1.12; }
+.access-description, .briefing-lead { max-width: 540px; line-height: 1.85; }
+.auth-mode-switch { margin-top: 24px; }
+.auth-mode-switch button { min-height: 48px; line-height: 1.5; }
+.role-switch { gap: 12px; margin-top: 16px; }
+.role-switch button { min-height: 48px; padding: 0 12px; line-height: 1.5; }
+.access-form { gap: 10px; margin-top: 20px; }
+.access-form label { line-height: 1.6; }
+.access-form label:not(:first-child) { margin-top: 8px; }
+.access-form input { height: 48px; padding-inline: 14px; line-height: 1.6; }
+.access-form .launch-button, .mission-briefing .launch-button { min-height: 49px; }
+.access-note { margin-top: 18px; line-height: 1.7; }
+.mission-briefing { width: min(760px, calc(100% - 12.2% - 32px)); max-width: 760px; }
+.mission-briefing h1 { line-height: 1.12; }
+.briefing-board { gap: 1px; margin: 20px 0; }
+.briefing-board article { min-height: 82px; padding: 14px 16px; }
+.briefing-board article > p { line-height: 1.7; }
+.briefing-objectives { gap: 12px; margin: 20px 0 24px; line-height: 1.7; }
+.briefing-objectives span { grid-template-columns: 24px minmax(100px, 135px) minmax(0, 1fr); gap: 10px; }
+.mission-briefing .opening-footnote { margin-top: 26px; }
+.opening-bottom {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  flex: 0 0 auto;
+  margin: clamp(28px, 5vh, 52px) 6.1% 0;
+}
+.admin-loading-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 30px 0; }
+.admin-loading-card, .admin-loading-table > div { min-height: 112px; border: 1px solid var(--line); background: var(--panel); animation: admin-pulse 1.4s ease-in-out infinite alternate; }
+.admin-loading-table { display: grid; gap: 12px; }
+.admin-loading-table > div { min-height: 62px; }
+@keyframes admin-pulse { from { opacity: .48; } to { opacity: .9; } }
+
+@media (max-width: 700px) {
+  .opening-screen { padding-bottom: 24px; }
+  .opening-copy, .access-panel, .mission-briefing {
+    width: min(560px, calc(100% - 40px));
+    margin: 0 auto;
+    padding-top: clamp(28px, 5vh, 48px);
+  }
+  .access-panel h1, .mission-briefing h1 { line-height: 1.12; }
+  .auth-mode-switch { margin-top: 18px; }
+  .role-switch { gap: 8px; }
+  .access-form { gap: 8px; margin-top: 16px; }
+  .access-form label:not(:first-child) { margin-top: 5px; }
+  .access-form input, .role-switch button, .auth-mode-switch button { min-height: 46px; height: 46px; }
+  .briefing-board { gap: 8px; }
+  .briefing-board article { min-height: 78px; padding: 12px; }
+  .briefing-objectives { gap: 10px; }
+  .briefing-objectives span { grid-template-columns: 20px minmax(78px, 100px) minmax(0, 1fr); gap: 8px; }
+  .mission-briefing .opening-footnote { margin-top: 20px; }
+  .opening-bottom { margin: 32px 20px 0; }
+  .admin-loading-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+}
+
+.opening-screen:has(.access-panel),
+.opening-screen:has(.mission-briefing) {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 0;
+}
+.opening-screen:has(.access-panel) .access-panel,
+.opening-screen:has(.mission-briefing) .mission-briefing {
+  width: min(600px, calc(100% - 48px));
+  max-width: 600px;
+  margin: auto;
+  padding-block: clamp(10px, 2.5vh, 26px);
+}
+.opening-screen:has(.mission-briefing) .mission-briefing { max-width: 760px; }
+.opening-screen:has(.access-panel) .access-panel h1,
+.opening-screen:has(.mission-briefing) .mission-briefing h1 {
+  margin-block: 10px;
+  line-height: 1.08;
+}
+.opening-screen:has(.access-panel) .auth-mode-switch { margin-top: 12px; }
+.opening-screen:has(.access-panel) .auth-mode-switch button,
+.opening-screen:has(.access-panel) .role-switch button,
+.opening-screen:has(.access-panel) .access-form input { height: 44px; min-height: 44px; }
+.opening-screen:has(.access-panel) .role-switch { margin-top: 10px; }
+.opening-screen:has(.access-panel) .access-form { gap: 6px; margin-top: 10px; }
+.opening-screen:has(.access-panel) .access-form label:not(:first-child) { margin-top: 2px; }
+.opening-screen:has(.access-panel) .access-form .launch-button { min-height: 44px; }
+.opening-screen:has(.access-panel) .access-note { margin-top: 10px; }
+.opening-screen:has(.mission-briefing) .briefing-board { margin-block: 10px; }
+.opening-screen:has(.mission-briefing) .briefing-board article { min-height: 66px; padding: 10px 12px; }
+.opening-screen:has(.mission-briefing) .briefing-objectives { gap: 7px; margin-block: 10px; }
+.opening-screen:has(.mission-briefing) .mission-briefing .opening-footnote { margin-top: 12px; }
+.opening-screen:has(.access-panel) .opening-bottom,
+.opening-screen:has(.mission-briefing) .opening-bottom {
+  min-height: 34px;
+  margin: 0 6.1%;
+}
+
+@media (max-height: 820px) {
+  .opening-screen:has(.access-panel) .access-panel,
+  .opening-screen:has(.mission-briefing) .mission-briefing { padding-block: 6px; }
+  .opening-screen:has(.access-panel) .access-panel h1,
+  .opening-screen:has(.mission-briefing) .mission-briefing h1 { margin-block: 6px; }
+  .opening-screen:has(.access-panel) .access-description,
+  .opening-screen:has(.mission-briefing) .briefing-lead { line-height: 1.5; }
+  .opening-screen:has(.access-panel) .auth-mode-switch { margin-top: 8px; }
+  .opening-screen:has(.access-panel) .auth-mode-switch button,
+  .opening-screen:has(.access-panel) .role-switch button,
+  .opening-screen:has(.access-panel) .access-form input { height: 40px; min-height: 40px; }
+  .opening-screen:has(.access-panel) .role-switch { margin-top: 7px; }
+  .opening-screen:has(.access-panel) .access-form { gap: 4px; margin-top: 7px; }
+  .opening-screen:has(.access-panel) .access-form label:not(:first-child) { margin-top: 0; }
+  .opening-screen:has(.access-panel) .access-form .launch-button { min-height: 40px; }
+  .opening-screen:has(.access-panel) .access-note { margin-top: 6px; }
+  .opening-screen:has(.mission-briefing) .briefing-board { margin-block: 7px; }
+  .opening-screen:has(.mission-briefing) .briefing-board article { min-height: 56px; padding: 7px 10px; }
+  .opening-screen:has(.mission-briefing) .briefing-objectives { gap: 5px; margin-block: 7px; }
+  .opening-screen:has(.mission-briefing) .mission-briefing .opening-footnote { margin-top: 8px; }
+}
+
+@media (max-width: 700px) {
+  .opening-screen:has(.access-panel) .access-panel,
+  .opening-screen:has(.mission-briefing) .mission-briefing {
+    width: calc(100% - 40px);
+    padding-block: 5px;
+  }
+  .opening-screen:has(.access-panel) .opening-bottom,
+  .opening-screen:has(.mission-briefing) .opening-bottom { margin-inline: 20px; }
+}
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }

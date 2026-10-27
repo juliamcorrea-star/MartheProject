@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp,
@@ -12,6 +12,7 @@ import {
 type ResourceKey = "water" | "food" | "alloy" | "power";
 type Resources = Record<ResourceKey, number>;
 type ModuleId = "habitat" | "greenhouse" | "extractor" | "laboratory";
+type ProgressSnapshot = { started: boolean; resources: Resources; builtModules: ModuleId[]; day: number; finalStep: number; campaignComplete: boolean; showEpilogue: boolean };
 type Challenge = { solid: string; formula: string; question: string; answer: number; unit: string; hint: string };
 type Profile = { id: string; name: string; email: string; role: "student" | "teacher"; key: string };
 type ActivityRecord = { id: string; userId?: string; name: string; phase: string; answer: string; correct: boolean; kind: "access" | "answer"; at: string };
@@ -123,6 +124,7 @@ export function MartheExperience() {
   const [adminRoleFilter, setAdminRoleFilter] = useState<"all" | "student" | "teacher">("all");
   const [selectedAdminUserId, setSelectedAdminUserId] = useState<string | null>(null);
   const [editingAdminUser, setEditingAdminUser] = useState<AdminUser | null>(null);
+  const [adminDataLoading, setAdminDataLoading] = useState(true);
   const [adminForm, setAdminForm] = useState({ name: "", email: "", role: "student" as Profile["role"], password: "" });
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState("");
@@ -140,15 +142,50 @@ export function MartheExperience() {
   const [finalStep, setFinalStep] = useState(0);
   const [campaignComplete, setCampaignComplete] = useState(false);
   const [showEpilogue, setShowEpilogue] = useState(false);
+  const [progressSaveError, setProgressSaveError] = useState("");
   const [soundOn, setSoundOn] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
 
+  const persistProgressSnapshot = useCallback(async (progress: ProgressSnapshot) => {
+    if (!profile || profile.role !== "student") return;
+
+    try {
+      localStorage.setItem(`marthe-progress-${profile.id}`, JSON.stringify(progress));
+    } catch (error) {
+      console.error("Local progress save error:", error);
+    }
+
+    try {
+      const response = await fetch("/api/progress", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(progress),
+      });
+      const data: { error?: string } | null = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível salvar o progresso.");
+      setProgressSaveError("");
+    } catch (error) {
+      console.error("Progress save error:", error);
+      setProgressSaveError("Não foi possível sincronizar o progresso. A cópia local foi mantida.");
+    }
+  }, [profile]);
+
+  function resetTransientModalState() {
+    setActiveModule(null);
+    setFeedback(null);
+    setAnswer("");
+    setEditingAdminUser(null);
+    setDeleteCandidate(null);
+  }
+
   useEffect(() => {
+    resetTransientModalState();
+    setFinalStep(0);
     const requestedRole = new URLSearchParams(window.location.search).get("perfil");
     if (requestedRole === "professor") setSelectedRole("teacher");
     fetch("/api/auth/me").then(async (response) => {
-      if (!response.ok) return null;
+      if (!response.ok) throw new Error("Não foi possível verificar sua sessão. Tente novamente.");
       return (await response.json()).user as Omit<Profile, "key"> | null;
     }).then(async (user) => {
       if (user) {
@@ -156,11 +193,22 @@ export function MartheExperience() {
         setProfile(nextProfile);
         await restoreProgress(nextProfile);
         setEmail(user.email);
-        if (user.role === "teacher") await loadAdminData();
-        else {
+        if (user.role === "teacher") {
+          setAdminDataLoading(true);
+          try {
+            await loadAdminData();
+          } catch (error) {
+            setAdminError(error instanceof Error ? error.message : "Não foi possível carregar os dados administrativos.");
+          } finally {
+            setAdminDataLoading(false);
+          }
+        } else {
+          setAdminDataLoading(false);
           const response = await fetch("/api/activity");
           if (response.ok) setRecords((await response.json()).activities as ActivityRecord[]);
         }
+      } else {
+        setAdminDataLoading(false);
       }
     }).catch(() => setAuthError("Não foi possível conectar ao servidor. Tente novamente.")).finally(() => setLoaded(true));
   }, []);
@@ -168,41 +216,61 @@ export function MartheExperience() {
   useEffect(() => {
     if (!loaded || !progressReady || !profile || profile.role !== "student") return;
     const progress = { started, resources, builtModules, day, finalStep, campaignComplete, showEpilogue };
-    const timeout = window.setTimeout(() => {
-      localStorage.setItem(`marthe-progress-${profile.key}`, JSON.stringify(progress));
-      fetch("/api/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(progress) }).catch(() => undefined);
-    }, 350);
+    const timeout = window.setTimeout(() => { void persistProgressSnapshot(progress); }, 350);
     return () => window.clearTimeout(timeout);
-  }, [started, resources, builtModules, day, finalStep, campaignComplete, showEpilogue, loaded, progressReady, profile]);
+  }, [started, resources, builtModules, day, finalStep, campaignComplete, showEpilogue, loaded, progressReady, profile, persistProgressSnapshot]);
 
   async function loadAdminData() {
     const response = await fetch("/api/admin/users");
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "Não foi possível carregar os dados administrativos.");
-    setAdminUsers(data.users as AdminUser[]);
-    setRecords(data.activities as ActivityRecord[]);
-    setSelectedAdminUserId((current) => current && data.users.some((user: AdminUser) => user.id === current) ? current : data.users[0]?.id ?? null);
+    const data: { users?: AdminUser[]; activities?: ActivityRecord[]; error?: string } | null = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error ?? "Não foi possível carregar os dados administrativos.");
+    if (!data?.users || !data.activities) throw new Error("O servidor retornou dados administrativos inválidos.");
+    const { users, activities } = data;
+    setAdminError("");
+    setAdminUsers(users);
+    setRecords(activities);
+    setSelectedAdminUserId((current) => current && users.some((user) => user.id === current) ? current : users[0]?.id ?? null);
   }
 
   async function restoreProgress(user: Profile) {
     if (user.role !== "student") { setProgressReady(false); return; }
     const oldKey = user.name.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-");
-    const localProgress = readStored<{ started: boolean; resources: Resources; builtModules: ModuleId[]; day: number; finalStep?: number; campaignComplete?: boolean; showEpilogue?: boolean }>(`marthe-progress-${user.id}`, readStored(`marthe-progress-${oldKey}`, { started: false, resources: initialResources, builtModules: [], day: 1 }));
+    const localProgress = readStored<ProgressSnapshot>(`marthe-progress-${user.id}`, readStored(`marthe-progress-${oldKey}`, { started: false, resources: initialResources, builtModules: [], day: 1, finalStep: 0, campaignComplete: false, showEpilogue: false }));
     let saved = localProgress;
     try {
       const response = await fetch("/api/progress");
       if (response.ok) {
         const data = await response.json();
-        if (data.progress) saved = data.progress;
+        if (data.progress) {
+          saved = data.progress;
+        } else if (localProgress.started || localProgress.builtModules.length > 0) {
+          const syncResponse = await fetch("/api/progress", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(localProgress),
+          });
+          if (!syncResponse.ok) {
+            const syncError = await syncResponse.json().catch(() => null);
+            throw new Error(syncError?.error ?? "Não foi possível sincronizar o progresso local.");
+          }
+        }
+      } else {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Não foi possível carregar o progresso salvo.");
       }
-    } catch {}
+    } catch (error) {
+      console.error("Progress load error:", error);
+      setProgressSaveError("Não foi possível sincronizar o progresso. A cópia local foi carregada.");
+    }
     setStarted(saved.started);
     setResources(saved.resources);
     setBuiltModules(saved.builtModules);
     setDay(saved.day);
-    setFinalStep(saved.finalStep ?? 0);
-    setCampaignComplete(saved.campaignComplete ?? false);
-    setShowEpilogue(saved.showEpilogue ?? false);
+    const restoredFinalStep = Math.max(0, saved.finalStep ?? 0);
+    const hasCompletedFinalSteps = restoredFinalStep >= finalProblems.length;
+    setFinalStep(Math.min(restoredFinalStep, finalProblems.length - 1));
+    setCampaignComplete(saved.campaignComplete || hasCompletedFinalSteps);
+    setShowEpilogue(saved.showEpilogue || hasCompletedFinalSteps);
     setProgressReady(true);
   }
 
@@ -215,18 +283,62 @@ export function MartheExperience() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: profileName, email, password, role: selectedRole }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Não foi possível acessar sua conta.");
+      const contentType = response.headers.get("content-type") ?? "";
+      const responseBody = await response.text();
+      let data: { user?: Omit<Profile, "key">; error?: string; message?: string } | null = null;
+
+      if (contentType.toLowerCase().includes("application/json") && responseBody.trim()) {
+        try {
+          const parsed: unknown = JSON.parse(responseBody);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const result = parsed as Record<string, unknown>;
+            data = {
+              user: result.user as Omit<Profile, "key"> | undefined,
+              error: typeof result.error === "string" ? result.error : undefined,
+              message: typeof result.message === "string" ? result.message : undefined,
+            };
+          }
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!response.ok) {
+        const detail = data?.error ?? data?.message ?? responseBody.trim().slice(0, 500);
+        throw new Error(detail || "Não foi possível acessar sua conta.");
+      }
+      if (!data?.user) {
+        const detail = data?.error ?? data?.message ?? responseBody.trim().slice(0, 500);
+        throw new Error(detail || "O servidor retornou uma resposta inválida. Tente novamente.");
+      }
+
       const nextProfile: Profile = { ...data.user, key: data.user.id };
       setProfile(nextProfile);
       await restoreProgress(nextProfile);
-      if (nextProfile.role === "teacher") await loadAdminData();
-      else {
+      if (nextProfile.role === "teacher") {
+        setAdminDataLoading(true);
+        try {
+          await loadAdminData();
+        } catch (error) {
+          console.error("Erro ao carregar painel docente:", error);
+          setAdminError(error instanceof Error ? error.message : "Não foi possível carregar os dados administrativos.");
+        } finally {
+          setAdminDataLoading(false);
+        }
+      } else {
+        setAdminDataLoading(false);
         const activityResponse = await fetch("/api/activity");
         if (activityResponse.ok) setRecords((await activityResponse.json()).activities as ActivityRecord[]);
       }
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Não foi possível acessar sua conta.");
+      console.error("Erro ao acessar a conta:", error);
+      const message = error instanceof Error ? error.message : "Não foi possível acessar sua conta.";
+      if (profile?.role === "teacher") {
+        setAdminError(message);
+        setAdminDataLoading(false);
+      } else {
+        setAuthError(message);
+      }
     } finally {
       setAuthBusy(false);
     }
@@ -285,8 +397,11 @@ export function MartheExperience() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setProfile(null);
     setProgressReady(false);
-    setActiveModule(null);
-    setFeedback(null);
+    resetTransientModalState();
+    setFinalStep(0);
+    setCampaignComplete(false);
+    setShowEpilogue(false);
+    setProgressSaveError("");
   }
 
   function openChallenge(module: Module) {
@@ -296,12 +411,13 @@ export function MartheExperience() {
     setFeedback(null);
   }
 
-  function submitAnswer(event: React.FormEvent<HTMLFormElement>) {
+  async function submitAnswer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile || profile.role !== "student") return;
-    const isFinal = activeModule === null && finalStep < finalProblems.length && builtModules.length === modules.length;
-    const phaseName = activeModule?.name ?? finalProblems[finalStep]?.phase;
-    const expectedAnswer = activeModule?.challenge.answer ?? finalProblems[finalStep]?.answer;
+    const finalProblem = finalProblems[finalStep];
+    const isFinal = activeModule === null && finalProblem !== undefined && builtModules.length === modules.length;
+    const phaseName = activeModule?.name ?? finalProblem?.phase;
+    const expectedAnswer = activeModule?.challenge.answer ?? finalProblem?.answer;
     if (expectedAnswer === undefined) return;
     const correct = Number(answer.replace(",", ".")) === expectedAnswer;
     fetch("/api/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: phaseName ?? "Desafio", answer, correct }) })
@@ -315,9 +431,21 @@ export function MartheExperience() {
       return;
     }
     if (isFinal) {
+      const nextCampaignComplete = finalStep === finalProblems.length - 1;
+      await persistProgressSnapshot({
+        started: true,
+        resources,
+        builtModules,
+        day,
+        finalStep,
+        campaignComplete: nextCampaignComplete,
+        showEpilogue: nextCampaignComplete || showEpilogue,
+      });
       if (finalStep === finalProblems.length - 1) {
         setCampaignComplete(true);
-        setFeedback("victory");
+        setFeedback(null);
+        setActiveModule(null);
+        setShowEpilogue(true);
       } else {
         setFinalStep((current) => current + 1);
         setFeedback("correct");
@@ -333,8 +461,18 @@ export function MartheExperience() {
     Object.entries(activeModule.reward).forEach(([key, amount]) => {
       nextResources[key as ResourceKey] += amount ?? 0;
     });
+    const nextBuiltModules = [...builtModules, activeModule.id];
+    await persistProgressSnapshot({
+      started: true,
+      resources: nextResources,
+      builtModules: nextBuiltModules,
+      day: day + 1,
+      finalStep,
+      campaignComplete,
+      showEpilogue,
+    });
     setResources(nextResources);
-    setBuiltModules((current) => [...current, activeModule.id]);
+    setBuiltModules(nextBuiltModules);
     setSelectedModuleId(modules[builtModules.length + 1]?.id ?? activeModule.id);
     setDay((current) => current + 1);
     setFeedback("correct");
@@ -357,6 +495,7 @@ export function MartheExperience() {
   }
 
   const progress = Math.round((builtModules.length / modules.length) * 100);
+  const currentFinalProblem = finalProblems[finalStep];
 
   if (!loaded) return <main className="opening-screen" aria-label="Carregando expedição" />;
 
@@ -386,6 +525,17 @@ export function MartheExperience() {
   }
 
   if (profile.role === "teacher") {
+    if (adminDataLoading) {
+      return <main className="game-screen admin-screen" aria-busy="true">
+        <header className="game-topbar"><a className="wordmark game-wordmark" href="#painel"><span className="wordmark-mark">M</span> MARTHE</a><div className="mission-title"><span className="mission-kicker">DOCENTE</span><span>Administração</span></div><div className="topbar-right"><span className="sol-counter">PERFIL <strong>PROFESSOR</strong></span></div></header>
+        <section className="admin-content" id="painel">
+          <div className="admin-heading"><div><p className="eyebrow"><span /> CENTRO DE ADMINISTRAÇÃO</p><h1>Gestão da <em>expedição.</em></h1><p role="status">Verificando seu perfil docente e carregando os dados.</p></div></div>
+          <div className="admin-loading-metrics" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <div className="admin-loading-card" key={index} />)}</div>
+          <div className="admin-loading-table" aria-hidden="true"><div /><div /><div /><div /></div>
+        </section>
+      </main>;
+    }
+
     const studentRecords = records.filter((record) => record.kind === "answer");
     const correctCount = studentRecords.filter((record) => record.correct).length;
     const wrongCount = studentRecords.length - correctCount;
@@ -556,19 +706,20 @@ export function MartheExperience() {
             })}
           </div>
           {builtModules.length === modules.length ? <button className="final-mission-button" onClick={() => { if (campaignComplete) { setShowEpilogue(true); } else { setActiveModule(null); setAnswer(""); setFeedback(null); } }}><span><Shield size={17} /> {campaignComplete ? "RELATÓRIO DA MISSÃO" : "CRISE FINAL DESBLOQUEADA"}</span><strong>{campaignComplete ? "VER EPÍLOGO" : "ESTABILIZAR O OXIGÊNIO"}</strong><ArrowRight size={16} /></button> : <div className="daily-brief"><div className="brief-icon"><CircleHelp size={17} /></div><div><span>NOTA DA COMANDANTE</span><p>Volume é espaço. Espaço é ar. Ar é vida.</p></div></div>}
+          {progressSaveError && <p className="admin-error progress-save-error" role="alert">{progressSaveError}</p>}
           <div className="panel-footer"><span><span className="status-dot" /> SISTEMAS NOMINAIS</span><button onClick={() => setStarted(false)}>VER DIÁRIO <ArrowRight size={13} /></button></div>
         </aside>
       </div>
 
-      {(activeModule || (builtModules.length === modules.length && (!campaignComplete || feedback === "victory"))) && started && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setActiveModule(null); setFeedback(null); } }}>
+      {started && (activeModule !== null || (builtModules.length === modules.length && finalStep < finalProblems.length && (!campaignComplete || feedback === "victory"))) && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setActiveModule(null); setFeedback(null); setAnswer(""); } }}>
         <section className="challenge-modal" role="dialog" aria-modal="true" aria-labelledby="challenge-title">
           <button className="modal-close icon-button" aria-label="Fechar desafio" onClick={() => { setActiveModule(null); setFeedback(null); }}><X size={17} /></button>
           {feedback === "victory" ? <div className="success-state"><div className="success-icon"><Check size={26} /></div><p className="eyebrow">TRANSMISSÃO DE EMERGÊNCIA · RESOLVIDA</p><h2 id="challenge-title">A base vai<br /><em>sobreviver.</em></h2><p>Restam 20 m³ de oxigênio após a tempestade e a demanda da tripulação. A válvula foi isolada, a reserva é suficiente e os quatro colonos estão seguros.</p><button className="launch-button" onClick={() => { setFeedback(null); setActiveModule(null); setShowEpilogue(true); }}>RECEBER RELATÓRIO FINAL <ArrowRight size={16} /></button></div> : feedback === "correct" ? <div className="success-state"><div className="success-icon"><Check size={26} /></div><p className="eyebrow">{activeModule ? "ESTRUTURA OPERACIONAL" : "ETAPA CONFIRMADA"}</p><h2 id="challenge-title">{activeModule ? <>Bom trabalho,<br /><em>comandante.</em></> : <>Cálculo<br /><em>confirmado.</em></>}</h2><p>{activeModule ? `${activeModule.name} construído. Recursos atualizados e tripulação protegida por mais um sol.` : "A resposta foi registrada. O próximo cálculo continua a investigação da reserva de oxigênio."}</p><button className="launch-button" onClick={() => { setFeedback(null); setActiveModule(null); }}>CONTINUAR <ArrowRight size={16} /></button></div> : <>
-            <p className="eyebrow modal-eyebrow"><span /> {activeModule ? "DESAFIO DE CONSTRUÇÃO" : "RESOLUÇÃO DA CRISE · ETAPA FINAL"}</p><div className="challenge-number">{activeModule ? `0${modules.findIndex((module) => module.id === activeModule.id) + 1}` : `0${finalStep + 1}`} <span>/ {activeModule ? "GEOMETRIA ESPACIAL" : "OXIGÊNIO DA BASE"}</span></div>
-            <h2 id="challenge-title">{activeModule?.name ?? finalProblems[finalStep]?.phase}</h2>{activeModule ? <div className="solid-card"><span>SÓLIDO EM ANÁLISE</span><strong>{activeModule.challenge.solid}</strong><i>{activeModule.challenge.formula}</i></div> : <div className="final-step-track">{finalProblems.map((problem, index) => <span className={index < finalStep ? "step-done" : index === finalStep ? "step-current" : ""} key={problem.phase}>{String(index + 1).padStart(2, "0")}</span>)}</div>}
-            <p className="challenge-question">{activeModule?.challenge.question ?? finalProblems[finalStep]?.question}</p>
+            <p className="eyebrow modal-eyebrow"><span /> {activeModule ? "DESAFIO DE CONSTRUÇÃO" : "RESOLUÇÃO DA CRISE · ETAPA FINAL"}</p><div className="challenge-number">{activeModule ? `0${modules.findIndex((module) => module.id === activeModule.id) + 1}` : `0${Math.min(finalStep + 1, finalProblems.length)}`} <span>/ {activeModule ? "GEOMETRIA ESPACIAL" : "OXIGÊNIO DA BASE"}</span></div>
+            <h2 id="challenge-title">{activeModule?.name ?? currentFinalProblem?.phase ?? "MISSÃO CONCLUÍDA"}</h2>{activeModule ? <div className="solid-card"><span>SÓLIDO EM ANÁLISE</span><strong>{activeModule.challenge.solid}</strong><i>{activeModule.challenge.formula}</i></div> : <div className="final-step-track">{finalProblems.map((problem, index) => <span className={index < finalStep ? "step-done" : index === finalStep ? "step-current" : ""} key={problem.phase}>{String(index + 1).padStart(2, "0")}</span>)}</div>}
+            <p className="challenge-question">{activeModule?.challenge.question ?? currentFinalProblem?.question ?? "Todas as etapas da missão foram concluídas."}</p>
             <form onSubmit={submitAnswer}><label className="answer-label" htmlFor="volume-answer">RESPOSTA <span>{activeModule ? `EM ${activeModule.challenge.unit}` : "EM m³"}</span></label><div className="answer-field"><input autoFocus id="volume-answer" inputMode="decimal" type="number" step="any" value={answer} onChange={(event) => { setAnswer(event.target.value); setFeedback(null); }} placeholder="0" /><span>{activeModule?.challenge.unit ?? "m³"}</span></div>
-              {feedback === "wrong" && <p className="answer-feedback">Ainda não. Dica: {activeModule?.challenge.hint ?? finalProblems[finalStep]?.hint}.</p>}
+              {feedback === "wrong" && <p className="answer-feedback">Ainda não. Dica: {activeModule?.challenge.hint ?? currentFinalProblem?.hint ?? "Revise os resultados das etapas anteriores"}.</p>}
               {activeModule && <div className="cost-preview"><span>CUSTO DA ESTRUTURA</span>{(Object.entries(activeModule.cost) as [ResourceKey, number][]).map(([key, amount]) => <span className="cost-item" key={key}>{amount} {resourceMeta[key].unit} {resourceMeta[key].label.toLowerCase()}</span>)}</div>}
               <button className="solve-button" type="submit" disabled={!answer}>VALIDAR CÁLCULO <ArrowRight size={16} /></button>
             </form>

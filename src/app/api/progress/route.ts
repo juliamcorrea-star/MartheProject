@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentAccount, getStore, updateStore } from "@/lib/store";
+import { getCurrentAccount, getUserProgress, saveUserProgress } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -21,23 +21,32 @@ function isValidProgress(value: unknown): value is { started: boolean; resources
 }
 
 export async function GET() {
-  const account = await getCurrentAccount();
-  if (!account) return NextResponse.json({ error: "Entre na sua conta para continuar." }, { status: 401 });
-  if (account.role !== "student") return NextResponse.json({ error: "O progresso de missão pertence a contas de estudante." }, { status: 403 });
-  const store = await getStore();
-  return NextResponse.json({ progress: store.progress?.[account.id] ?? null });
+  try {
+    const account = await getCurrentAccount();
+    if (!account) return NextResponse.json({ error: "Entre na sua conta para continuar." }, { status: 401 });
+    if (account.role !== "student") return NextResponse.json({ error: "O progresso de missão pertence a contas de estudante." }, { status: 403 });
+    const progress = await getUserProgress(account.id);
+    return NextResponse.json({ progress });
+  } catch (error) {
+    console.error("Progress load error:", error);
+    return NextResponse.json({ error: "Não foi possível carregar o progresso salvo." }, { status: 500 });
+  }
 }
 
 export async function PUT(request: Request) {
-  const account = await getCurrentAccount();
-  if (!account) return NextResponse.json({ error: "Entre na sua conta para continuar." }, { status: 401 });
-  if (account.role !== "student") return NextResponse.json({ error: "O progresso de missão pertence a contas de estudante." }, { status: 403 });
-  let progress: unknown;
-  try { progress = await request.json(); } catch { return NextResponse.json({ error: "Dados de progresso inválidos." }, { status: 400 }); }
-  if (!isValidProgress(progress)) return NextResponse.json({ error: "Os dados de progresso não são válidos." }, { status: 400 });
-  await updateStore((store) => {
-    store.progress ??= {};
-    store.progress[account.id] = progress;
-  });
-  return NextResponse.json({ success: true });
+  try {
+    const account = await getCurrentAccount();
+    if (!account) return NextResponse.json({ error: "Entre na sua conta para continuar." }, { status: 401 });
+    if (account.role !== "student") return NextResponse.json({ error: "O progresso de missão pertence a contas de estudante." }, { status: 403 });
+    let progress: unknown;
+    try { progress = await request.json(); } catch { return NextResponse.json({ error: "Dados de progresso inválidos." }, { status: 400 }); }
+    if (!isValidProgress(progress)) return NextResponse.json({ error: "Os dados de progresso não são válidos." }, { status: 400 });
+
+    await saveUserProgress(account.id, progress);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Progress save error:", error);
+    const message = error instanceof Error ? error.message : "Não foi possível salvar o progresso.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
